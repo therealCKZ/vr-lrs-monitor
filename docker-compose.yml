@@ -1,0 +1,12 @@
+services:
+  lrs-api:
+    build: ./api
+    ports:
+      - "8000:8000"
+    restart: always
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    restart: always
