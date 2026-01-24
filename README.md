@@ -38,25 +38,27 @@ Ensure you have the following installed:
 
 3. **Verify the API Status**
 Check if the Middleware is successfully communicating with the LRS:
-* Open: http://localhost:8000/metrics
+* Open: 'http://localhost:8000/metrics'
 * You should see a JSON response with record_count
 
 ---
 
 ### Accessing the Dashboard
 1. **Login to Grafana**
-    * URL: http://lrs-api:8000/metrics
-    * Username: admin
-    * Password: admin
+    * URL: 'http://lrs-api:8000/metrics'
+    * Username: 'admin'
+    * Password: 'admin'
 2. **Configuration**
-Ensure the **Infinity Data Source** in Grafana is pointed to the internal Docker address: http://lre-api:8000/metrics
+Ensure the **Infinity Data Source** in Grafana is pointed to the internal Docker address: 'http://lre-api:8000/metrics'
 
 ---
 
 ### Cusomizing the Obseration Window
 To change the specific time from the system starts counting VR activities:
-1. Open api/main.py.
-2. Locate the START_TIME variable.
+1. Open 'api/main.py'.
+
+2. Locate the 'START_TIME' variable.
+
 3. Edit the timestamp (ISO 8601 format with GMT+8):
    ```bash
    START_TIME = "2026-01-24T09:00:00+08:00"
