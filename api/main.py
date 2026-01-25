@@ -19,7 +19,7 @@ def health():
 def metrics():
     try:
         #get data from chosen time
-        start_time = "2026-01-24T00:00:00+08:00"
+        start_time = "2026-01-25T00:00:00+08:00"
 
         # create Basic Auth
         auth_str = f"{LRS_KEY}:{LRS_SECRET}"

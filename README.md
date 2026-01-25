@@ -61,7 +61,7 @@ To change the specific time from the system starts counting VR activities:
 
 3. Edit the timestamp (ISO 8601 format with GMT+8):
    ```bash
-   START_TIME = "2026-01-24T09:00:00+08:00"
+   START_TIME = "2026-01-25T00:00:00+08:00"
 
 4. Restart the container to apply changes:
    ```bash
