@@ -1,12 +1,23 @@
 services:
   lrs-api:
-    build: ./api
+    build: 
+      context: ./api
+    container_name: lrs-api # 強制指定容器名稱，方便 DNS 辨識
     ports:
       - "8000:8000"
-    restart: always
+    env_file:
+      - .env
+    networks:
+      - monitoring
 
   grafana:
     image: grafana/grafana:latest
+    container_name: grafana
     ports:
       - "3000:3000"
-    restart: always
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    driver: bridge
