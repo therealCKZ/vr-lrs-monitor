@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from datetime import datetime, time
 import requests
 import base64
@@ -18,37 +18,45 @@ def health():
 @app.route('/metrics', methods=['GET'])
 def metrics():
     try:
-        #get data from chosen time
-        start_time = "2026-01-25T00:00:00+08:00"
+        #Read Grafana timestamp
+        from_ts = request.args.get('from')
 
-        # create Basic Auth
+        if from_ts:
+            #trasform Grafana format to LRS ISO format
+            dt_object = datetime.fromtimestamp(int(from_ts)/1000.0)
+            start_time = dt_object.isoformat()
+        else:
+            start_time = "2026-01-27T00:00:00+08:00"
+
+        #Basic auth
         auth_str = f"{LRS_KEY}:{LRS_SECRET}"
         encoded_auth = base64.b64encode(auth_str.encode()).decode()
         headers = {
-            "Authorization": f"Basic {encoded_auth}",
+            "Authorization": f"Basic {encoded_auth}", 
             "X-Experience-API-Version": "1.0.3"
         }
 
-        # add a 'since' filter
-        # set limit to 1000 (can adjust according to activity)
+        #Add sicne filter
         params = {
             "since": start_time, 
             "limit": 1000
         }
 
-        # ask data from LRS
+        #request LRS data
         response = requests.get(LRS_URL, headers=headers, params=params, verify=False)
         response.raise_for_status()
         data = response.json()
 
-        # today_count means today's statement count
-        today_count = len(data.get("statements", []))
+        #record count
+        record_count = len(data.get("statements", []))
 
         return jsonify({
             "status": "success", 
-            "record_count": today_count, 
+            "record_count": record_count, 
+            "start_time_used": start_time, 
             "source": "LRS"
         })
+    
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
     
