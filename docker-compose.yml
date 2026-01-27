@@ -2,7 +2,7 @@ services:
   lrs-api:
     build: 
       context: ./api
-    container_name: lrs-api # 強制指定容器名稱，方便 DNS 辨識
+    container_name: lrs-api
     ports:
       - "8000:8000"
     env_file:
@@ -15,8 +15,20 @@ services:
     container_name: grafana
     ports:
       - "3000:3000"
+    # 開啟匿名瀏覽功能
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_AUTH_ANONYMOUS_ORG_NAME=Main Org.
+    # 指定資料持久化路徑，防止重啟後 Dashboard 消失
+    volumes:
+      - grafana-storage:/var/lib/grafana
     networks:
       - monitoring
+
+# 定義 Volumes
+volumes:
+  grafana-storage:
 
 networks:
   monitoring:
