@@ -1,15 +1,18 @@
 from flask import Flask, jsonify, request
 from datetime import datetime, time
+from dotenv import load_dotenv
 import requests
 import base64
 import os
 
 app = Flask(__name__)
 
+load_dotenv()
+
 # LRS setup
 LRS_URL = "https://nccu-rb521.nccu.edu.tw/data/xAPI/statements"
-LRS_KEY = "f38d35951635983bf9a371e70bbe776a3e539e2b"
-LRS_SECRET = "fdeb801552ccfda89d4cd485cee881feb968bb16"
+LRS_KEY = os.getenv("LRS_KEY")
+LRS_SECRET = os.getenv("LRS_SECRET")
 
 @app.route('/health', methods=['GET'])
 def health():
