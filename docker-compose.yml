@@ -15,18 +15,28 @@ services:
     container_name: grafana
     ports:
       - "3000:3000"
-    # 開啟匿名瀏覽功能
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
       - GF_AUTH_ANONYMOUS_ORG_NAME=Main Org.
-    # 指定資料持久化路徑，防止重啟後 Dashboard 消失
+      # --- 新增以下兩行以修正分享連結網址 ---
+      - GF_SERVER_DOMAIN=sale-feels-control-barbie.trycloudflare.com
+      - GF_SERVER_ROOT_URL=https://sale-feels-control-barbie.trycloudflare.com
+      - GF_SECURITY_ALLOW_EMBEDDING=true
     volumes:
       - grafana-storage:/var/lib/grafana
     networks:
       - monitoring
 
-# 定義 Volumes
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflare-tunnel
+    # 保持連接到 Grafana 服務
+    command: tunnel --no-autoupdate --url http://grafana:3000
+    networks:
+      - monitoring
+    restart: always
+
 volumes:
   grafana-storage:
 

@@ -1,9 +1,10 @@
 from flask import Flask, jsonify, request
-from datetime import datetime, time
+from datetime import datetime
 from dotenv import load_dotenv
 import requests
 import base64
 import os
+import re
 
 app = Flask(__name__)
 
@@ -11,14 +12,13 @@ app = Flask(__name__)
 load_dotenv()
 
 # LRS configuration
-LRS_URL = "https://nccu-rb521.nccu.edu.tw/data/xAPI/statements"
+LRS_URL = os.getenv("LRS_URL")
 LRS_KEY = os.getenv("LRS_KEY")
 LRS_SECRET = os.getenv("LRS_SECRET")
 
 @app.route('/health', methods=['GET'])
 def health():
     return "OK", 200
-
 
 TARGET_TASK_KEYS = [
     "q_earth_s02_ob01", "q_earth_s05_ob01", "q_earth_s05_ob02", 
@@ -33,14 +33,11 @@ def metrics():
         # Read timestamp from Grafana
         from_ts = request.args.get('from')
         if from_ts:
-            # Transform Grafana timestamp to ISO format
             dt_object = datetime.fromtimestamp(int(from_ts)/1000.0)
             start_time = dt_object.strftime('%Y-%m-%dT%H:%M:%SZ')
         else:
-            # Default fallback start time
             start_time = "2026-01-27T00:00:00Z"
 
-        # Basic Authentication setup
         auth_str = f"{LRS_KEY}:{LRS_SECRET}"
         encoded_auth = base64.b64encode(auth_str.encode()).decode()
         headers = {
@@ -48,35 +45,56 @@ def metrics():
             "X-Experience-API-Version": "1.0.3"
         }
 
-        # Query parameters for LRS
+        # --- 分頁抓取邏輯 ---
+        statements = []
         params = {"since": start_time, "limit": 1000}
         
-        # Request data from LRS
         response = requests.get(LRS_URL, headers=headers, params=params, verify=False)
         response.raise_for_status()
         data = response.json()
-        statements = data.get("statements", [])
+        statements.extend(data.get("statements", []))
 
-        # Logic for counting unique participants
+        next_url = data.get("more")
+        while next_url:
+            if not next_url.startswith("http"):
+                from urllib.parse import urljoin
+                next_url = urljoin(LRS_URL, next_url)
+            
+            next_res = requests.get(next_url, headers=headers, verify=False)
+            next_res.raise_for_status()
+            next_data = next_res.json()
+            statements.extend(next_data.get("statements", []))
+            next_url = next_data.get("more")
+
         unique_actors = set()
         verb_counts = {}
-
-        #Logic for user_progress
         user_progress = {}
+        
+        # --- 新增：正確率統計變數 ---
+        correct_count = 0
+        total_quiz_attempts = 0
 
         for s in statements:
-            # Standardize xAPI statement structure
             st = s.get("statement", s) 
             actor = st.get("actor", {})
+            verb_info = st.get("verb", {})
+            verb_display = verb_info.get("display", {}).get("en-US", "Unknown")
+            verb_id = verb_info.get("id", "")
+            
+            # --- 正確率計算邏輯 ---
+            # 檢查是否為提交答案的行為
+            if "submitted" in verb_id:
+                total_quiz_attempts += 1
+                result = st.get("result", {})
+                # 根據你的 JSON 結構：completion 為 true 代表答對
+                if result.get("completion") is True:
+                    correct_count += 1
+            
+            # --- Regex 處理動詞名稱 ---
+            verb_display = re.sub(r'pressed controller button-\w to ', '', verb_display)
 
-            #Extract ver diplay name (English)
-            verb_display = st.get("verb", {}).get("display", {}).get("en-US", "Unknown")
-
-            #Extract extensions for task tracking
             context = st.get("context", {})
             extensions = context.get("extensions", {})
-
-            # Extract identifier from account name, name, or mbox
             account = actor.get("account") or {}
             actor_id = account.get("name") or actor.get("name") or actor.get("mbox")
 
@@ -85,38 +103,45 @@ def metrics():
                 if actor_id not in user_progress:
                     user_progress[actor_id] = set()
 
-                #Count verb frequency
                 verb_counts[verb_display] = verb_counts.get(verb_display, 0) + 1
 
-                #Logic of checking extension keys
                 for ext_key in extensions.keys():
                     for task_id in TARGET_TASK_KEYS:
                         if task_id in ext_key:
                             user_progress[actor_id].add(task_id)
 
-        # Define result outside the loop to prevent errors if statements list is empty
         participant_count = len(unique_actors)
 
-        #Calculate average class progress
+        # 進度計算邏輯
         if participant_count > 0:
+            individual_progresses = [
+                (len(tasks) / len(TARGET_TASK_KEYS)) * 100 
+                for tasks in user_progress.values()
+            ]
             total_tasks_completed = sum(len(tasks) for tasks in user_progress.values())
             avg_progress = (total_tasks_completed / (participant_count * len(TARGET_TASK_KEYS))) * 100
+            max_progress = max(individual_progresses)
+            min_progress = min(individual_progresses)
         else:
-            avg_progress = 0
+            avg_progress = max_progress = min_progress = 0
 
+        # --- 計算最終正確率 ---
+        correction_rate = (correct_count / total_quiz_attempts * 100) if total_quiz_attempts > 0 else 0
 
         return jsonify({
             "status": "success", 
             "record_count": len(statements),
             "participant_count": participant_count,  
-            "start_time_used": start_time, 
-            "verb_distribution": verb_counts, 
             "average_progress": round(avg_progress, 2), 
+            "max_progress": round(max_progress, 2), 
+            "min_progress": round(min_progress, 2),
+            "correction_rate": round(correction_rate, 2), # 新增
+            "total_quiz_attempts": total_quiz_attempts,   # 新增
+            "verb_distribution": verb_counts, 
             "source": "LRS"
         })
     
     except Exception as e:
-        # Log error details for debugging in docker logs
         print(f"Error Detail: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
     
