@@ -15,6 +15,7 @@ load_dotenv()
 LRS_URL = os.getenv("LRS_URL")
 LRS_KEY = os.getenv("LRS_KEY")
 LRS_SECRET = os.getenv("LRS_SECRET")
+CLASS_EXT = os.getenv("")
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -30,6 +31,9 @@ TARGET_TASK_KEYS = [
 @app.route('/metrics', methods=['GET'])
 def metrics():
     try:
+        # Get the class
+        target_class = request.args.get('class')
+
         # Read timestamp from Grafana
         from_ts = request.args.get('from')
         if from_ts:
@@ -76,6 +80,16 @@ def metrics():
 
         for s in statements:
             st = s.get("statement", s) 
+
+            # Class
+            context = st.get("context", {})
+            extensions = context.get("extensions", {})
+            statement_class = extensions.get(CLASS_EXT)
+
+            if target_class and target_class != "ALL":
+                if str(statement_class) != str(target_class):
+                    continue
+
             actor = st.get("actor", {})
             verb_info = st.get("verb", {})
             verb_display = verb_info.get("display", {}).get("en-US", "Unknown")
