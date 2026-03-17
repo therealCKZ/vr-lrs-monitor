@@ -29,7 +29,7 @@ Ensure you have the following installed:
 
 1. **Clone the Repository**
    ```bash
-   git clone [https://github.com/YOUR_USERNAME/vr-lrs-monitor.git](https://github.com/YOUR_USERNAME/vr-lrs-monitor.git)
+   git clone [https://github.com/therealCKZ/vr-lrs-monitor.git](https://github.com/therealCKZ/vr-lrs-monitor.git)
    cd vr-lrs-monitor
 
 2. **Launch the Sevice**
