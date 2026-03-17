@@ -8,14 +8,15 @@ import re
 
 app = Flask(__name__)
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
 
 # LRS configuration
 LRS_URL = os.getenv("LRS_URL")
 LRS_KEY = os.getenv("LRS_KEY")
 LRS_SECRET = os.getenv("LRS_SECRET")
-CLASS_EXT = os.getenv("")
+CLASS_EXT = os.getenv("CLASS_EXT")
+STUDENT_EXT = os.getenv("STUDENT_EXT")
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -31,10 +32,8 @@ TARGET_TASK_KEYS = [
 @app.route('/metrics', methods=['GET'])
 def metrics():
     try:
-        # Get the class
         target_class = request.args.get('class')
 
-        # Read timestamp from Grafana
         from_ts = request.args.get('from')
         if from_ts:
             dt_object = datetime.fromtimestamp(int(from_ts)/1000.0)
@@ -49,7 +48,7 @@ def metrics():
             "X-Experience-API-Version": "1.0.3"
         }
 
-        # --- 分頁抓取邏輯 ---
+        # Pagination logic
         statements = []
         params = {"since": start_time, "limit": 1000}
         
@@ -70,87 +69,89 @@ def metrics():
             statements.extend(next_data.get("statements", []))
             next_url = next_data.get("more")
 
-        unique_actors = set()
+        # --- Updated Identification Logic ---
+        unique_students = set()
         verb_counts = {}
         user_progress = {}
-        
-        # --- 新增：正確率統計變數 ---
         correct_count = 0
         total_quiz_attempts = 0
+        filtered_record_count = 0
 
         for s in statements:
             st = s.get("statement", s) 
 
-            # Class
+            # Context & Extensions
             context = st.get("context", {})
             extensions = context.get("extensions", {})
+            
+            # Class Filter
             statement_class = extensions.get(CLASS_EXT)
-
             if target_class and target_class != "ALL":
                 if str(statement_class) != str(target_class):
                     continue
 
+            filtered_record_count += 1
+
+            # --- IDENTIFY STUDENT ---
+            student_id_ext = extensions.get(STUDENT_EXT)
             actor = st.get("actor", {})
-            verb_info = st.get("verb", {})
-            verb_display = verb_info.get("display", {}).get("en-US", "Unknown")
-            verb_id = verb_info.get("id", "")
-            
-            # --- 正確率計算邏輯 ---
-            # 檢查是否為提交答案的行為
-            if "submitted" in verb_id:
-                total_quiz_attempts += 1
-                result = st.get("result", {})
-                # 根據你的 JSON 結構：completion 為 true 代表答對
-                if result.get("completion") is True:
-                    correct_count += 1
-            
-            # --- Regex 處理動詞名稱 ---
-            verb_display = re.sub(r'pressed controller button-\w to ', '', verb_display)
-
-            context = st.get("context", {})
-            extensions = context.get("extensions", {})
             account = actor.get("account") or {}
-            actor_id = account.get("name") or actor.get("name") or actor.get("mbox")
+            actor_fallback = account.get("name") or actor.get("name") or actor.get("mbox")
+            
+            # Use extension if available, otherwise use actor
+            final_id = student_id_ext if student_id_ext else actor_fallback
 
-            if actor_id:
-                unique_actors.add(actor_id)
-                if actor_id not in user_progress:
-                    user_progress[actor_id] = set()
+            if final_id:
+                unique_students.add(final_id)
+                if final_id not in user_progress:
+                    user_progress[final_id] = set()
 
+                # Verb logic
+                verb_info = st.get("verb", {})
+                verb_display = verb_info.get("display", {}).get("en-US", "Unknown")
+                verb_id = verb_info.get("id", "")
+                
+                if "submitted" in verb_id:
+                    total_quiz_attempts += 1
+                    result = st.get("result", {})
+                    if result.get("completion") is True:
+                        correct_count += 1
+                
+                verb_display = re.sub(r'pressed controller button-\w to ', '', verb_display)
                 verb_counts[verb_display] = verb_counts.get(verb_display, 0) + 1
 
+                # Progress logic
                 for ext_key in extensions.keys():
                     for task_id in TARGET_TASK_KEYS:
                         if task_id in ext_key:
-                            user_progress[actor_id].add(task_id)
+                            user_progress[final_id].add(task_id)
 
-        participant_count = len(unique_actors)
+        student_count = len(unique_students)
 
-        # 進度計算邏輯
-        if participant_count > 0:
+        # Progress Calculation
+        if student_count > 0:
             individual_progresses = [
                 (len(tasks) / len(TARGET_TASK_KEYS)) * 100 
                 for tasks in user_progress.values()
             ]
             total_tasks_completed = sum(len(tasks) for tasks in user_progress.values())
-            avg_progress = (total_tasks_completed / (participant_count * len(TARGET_TASK_KEYS))) * 100
+            avg_progress = (total_tasks_completed / (student_count * len(TARGET_TASK_KEYS))) * 100
             max_progress = max(individual_progresses)
             min_progress = min(individual_progresses)
         else:
             avg_progress = max_progress = min_progress = 0
 
-        # --- 計算最終正確率 ---
         correction_rate = (correct_count / total_quiz_attempts * 100) if total_quiz_attempts > 0 else 0
 
         return jsonify({
             "status": "success", 
-            "record_count": len(statements),
-            "participant_count": participant_count,  
+            "record_count": filtered_record_count,
+            "student_count": student_count,  # Renamed
             "average_progress": round(avg_progress, 2), 
             "max_progress": round(max_progress, 2), 
             "min_progress": round(min_progress, 2),
-            "correction_rate": round(correction_rate, 2), # 新增
-            "total_quiz_attempts": total_quiz_attempts,   # 新增
+            "correction_rate": round(correction_rate, 2),
+            "total_quiz_attempts": total_quiz_attempts,
             "verb_distribution": verb_counts, 
             "source": "LRS"
         })
